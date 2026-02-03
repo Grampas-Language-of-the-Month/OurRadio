@@ -1,0 +1,125 @@
+@page "/songs"
+@rendermode InteractiveServer
+@using OurRadio.Models
+@using OurRadio.Data
+@inject SongService SongService
+@inject IJSRuntime JSRuntime
+
+<PageTitle>Songs</PageTitle>
+
+<h1>Songs</h1>
+
+<button class="btn btn-primary mb-3" @onclick="ShowAddForm">Add New Song</button>
+
+@if (isAddModalOpen)
+{
+    <div class="modal-backdrop fade show"></div>
+    <div class="modal fade show d-block" tabindex="-1" role="dialog" aria-modal="true">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Add Song</h5>
+                    <button type="button" class="btn-close" @onclick="CloseAddForm" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Title</label>
+                        <InputText class="form-control" @bind-Value="newSong.Title" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Duration (seconds)</label>
+                        <InputNumber class="form-control" @bind-Value="newSong.DurationSeconds" />
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="CloseAddForm">Cancel</button>
+                    <button class="btn btn-primary" @onclick="SaveNewSong" disabled="@isSaving">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@if (songs == null)
+{
+    <p><em>Loading...</em></p>
+}
+else if (songs.Count == 0)
+{
+    <p><em>No songs found.</em></p>
+}
+else
+{
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Title</th>
+                <th>Duration</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var song in songs)
+            {
+                <tr>
+                    <td>@song.Title</td>
+                    <td>@song.DurationSeconds seconds</td>
+                    <td>
+                        <button class="btn btn-danger btn-sm" @onclick="() => DeleteSong(song.Id)">Delete</button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private List<Song>? songs;
+    private bool isAddModalOpen;
+    private bool isSaving;
+    private Song newSong = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadSongs();
+    }
+
+    private async Task LoadSongs()
+    {
+        songs = await SongService.GetAllSongsAsync();
+    }
+
+    private void ShowAddForm()
+    {
+        newSong = new Song();
+        isAddModalOpen = true;
+    }
+
+    private void CloseAddForm()
+    {
+        isAddModalOpen = false;
+    }
+
+    private async Task SaveNewSong()
+    {
+        if (string.IsNullOrWhiteSpace(newSong.Title))
+        {
+            return;
+        }
+
+        isSaving = true;
+        await SongService.AddSongAsync(newSong);
+        isSaving = false;
+        isAddModalOpen = false;
+        await LoadSongs();
+    }
+
+    private async Task DeleteSong(int id)
+    {
+        if (await JSRuntime.InvokeAsync<bool>("confirm", "Are you sure you want to delete this song?"))
+        {
+            await SongService.DeleteSongAsync(id);
+            await LoadSongs();
+        }
+    }
+}

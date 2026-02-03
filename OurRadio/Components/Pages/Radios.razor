@@ -1,0 +1,125 @@
+@page "/radios"
+@rendermode InteractiveServer
+@using OurRadio.Models
+@using OurRadio.Data
+@inject RadioService RadioService
+@inject IJSRuntime JsRuntime
+
+<PageTitle>Radios</PageTitle>
+
+<h1>Radios</h1>
+
+<button class="btn btn-primary mb-3" @onclick="ShowCreateForm">Create New Radio</button>
+
+@if (isCreateModalOpen)
+{
+    <div class="modal-backdrop fade show"></div>
+    <div class="modal fade show d-block" tabindex="-1" role="dialog" aria-modal="true">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Create Radio</h5>
+                    <button type="button" class="btn-close" @onclick="CloseCreateForm" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Name</label>
+                        <InputText class="form-control" @bind-Value="newRadio.Name" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Description</label>
+                        <InputText class="form-control" @bind-Value="newRadio.Description" />
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="CloseCreateForm">Cancel</button>
+                    <button class="btn btn-primary" @onclick="SaveNewRadio" disabled="@isSaving">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@if (radios == null)
+{
+    <p><em>Loading...</em></p>
+}
+else if (radios.Count == 0)
+{
+    <p><em>No radios found.</em></p>
+}
+else
+{
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Description</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var radio in radios)
+            {
+                <tr>
+                    <td>@radio.Name</td>
+                    <td>@radio.Description</td>
+                    <td>
+                        <button class="btn btn-sm btn-danger" @onclick="() => DeleteRadio(radio.Id)">Delete</button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private List<Radio>? radios;
+    private bool isCreateModalOpen;
+    private bool isSaving;
+    private Radio newRadio = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadRadios();
+    }
+
+    private async Task LoadRadios()
+    {
+        radios = await RadioService.GetAllRadiosAsync();
+    }
+
+    private void ShowCreateForm()
+    {
+        newRadio = new Radio();
+        isCreateModalOpen = true;
+    }
+
+    private void CloseCreateForm()
+    {
+        isCreateModalOpen = false;
+    }
+
+    private async Task SaveNewRadio()
+    {
+        if (string.IsNullOrWhiteSpace(newRadio.Name))
+        {
+            return;
+        }
+
+        isSaving = true;
+        await RadioService.AddRadioAsync(newRadio);
+        await LoadRadios();
+        isSaving = false;
+        isCreateModalOpen = false;
+    }
+    
+    private async Task DeleteRadio(int id)
+    {
+        if (await JsRuntime.InvokeAsync<bool>("confirm", "Are you sure you want to delete this radio?"))
+        {
+            await RadioService.DeleteRadioAsync(id);
+            await LoadRadios();
+        }
+    }
+}
