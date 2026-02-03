@@ -2,6 +2,9 @@
 @rendermode InteractiveServer
 @using OurRadio.Models
 @using OurRadio.Data
+@using System.Threading.Tasks
+@inject ILogger<Songs> Logger
+@inject IWebHostEnvironment Environment
 @inject SongService SongService
 @inject IJSRuntime JSRuntime
 
@@ -26,9 +29,14 @@
                         <label class="form-label">Title</label>
                         <InputText class="form-control" @bind-Value="newSong.Title" />
                     </div>
+                    @* TODO: need to figure out duration of song server side instead                 *@
                     <div class="mb-3">
                         <label class="form-label">Duration (seconds)</label>
                         <InputNumber class="form-control" @bind-Value="newSong.DurationSeconds" />
+                    </div>
+                    <div class="mb-3">>
+                        <label class="form-label">Audio File</label>
+                        <InputFile OnChange="LoadFiles" />
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -55,6 +63,7 @@ else
             <tr>
                 <th>Title</th>
                 <th>Duration</th>
+                <th>Filename</th>
                 <th>Actions</th>
             </tr>
         </thead>
@@ -64,6 +73,7 @@ else
                 <tr>
                     <td>@song.Title</td>
                     <td>@song.DurationSeconds seconds</td>
+                    <td>@song.Filename</td>
                     <td>
                         <button class="btn btn-danger btn-sm" @onclick="() => DeleteSong(song.Id)">Delete</button>
                     </td>
@@ -75,9 +85,15 @@ else
 
 @code {
     private List<Song>? songs;
+    @* Modal stuff *@
     private bool isAddModalOpen;
     private bool isSaving;
     private Song newSong = new();
+    @* Upload stuff *@
+    private List<IBrowserFile> loadedFiles = [];
+    private string uploadedFilename = string.Empty;
+    private bool isLoading;
+    private int maxFileSize = 1024 * 1024 * 50;
 
     protected override async Task OnInitializedAsync()
     {
@@ -92,12 +108,58 @@ else
     private void ShowAddForm()
     {
         newSong = new Song();
+        uploadedFilename = string.Empty;
         isAddModalOpen = true;
     }
 
     private void CloseAddForm()
     {
         isAddModalOpen = false;
+        @* Delete unused song files *@
+        if (!string.IsNullOrEmpty(uploadedFilename))
+        {
+            var path = Path.Combine(Environment.ContentRootPath,
+                Environment.EnvironmentName, "unsafe_uploads",
+                uploadedFilename);
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+                Logger.LogInformation("Deleted unused uploaded file: {Filename}", uploadedFilename);
+            }
+        }
+    }
+
+    private async Task LoadFiles(InputFileChangeEventArgs e)
+    {
+        isLoading = true;
+        loadedFiles.Clear();
+
+        var file = e.File;
+        try
+        {
+            var trustedFileName = Path.GetRandomFileName() + Path.GetExtension(file.Name);
+            var path = Path.Combine(Environment.ContentRootPath,
+                Environment.EnvironmentName, "unsafe_uploads",
+                trustedFileName);
+
+            await using FileStream fs = new(path, FileMode.Create);
+            await file.OpenReadStream(maxFileSize).CopyToAsync(fs);
+
+            loadedFiles.Add(file);
+            uploadedFilename = trustedFileName;
+            newSong.Filename = trustedFileName;
+
+            Logger.LogInformation(
+                "Unsafe Filename: {UnsafeFilename} File saved: {Filename}",
+                file.Name, trustedFileName);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError("File: {Filename} Error: {Error}",
+                file.Name, ex.Message);
+        }
+
+        isLoading = false;
     }
 
     private async Task SaveNewSong()
