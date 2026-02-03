@@ -65,6 +65,7 @@ else
                     <td>@radio.Name</td>
                     <td>@radio.Description</td>
                     <td>
+                        <a href="@($"/radio/{radio.Id}")" class="btn btn-sm btn-primary">Visit</a>
                         <button class="btn btn-sm btn-danger" @onclick="() => DeleteRadio(radio.Id)">Delete</button>
                     </td>
                 </tr>

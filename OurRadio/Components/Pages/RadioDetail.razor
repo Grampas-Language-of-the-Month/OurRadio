@@ -1,0 +1,39 @@
+@page "/radio/{id:int}"
+@rendermode InteractiveServer
+@using OurRadio.Models
+@using OurRadio.Data
+@inject RadioService RadioService
+@inject NavigationManager NavigationManager
+
+<PageTitle>@radio?.Name</PageTitle>
+
+@if (radio == null)
+{
+    <p><em>Loading...</em></p>
+}
+else
+{
+    <div>
+        <h1>@radio.Name</h1>
+        <p>@radio.Description</p>
+        <a href="/radios" class="btn btn-secondary">Back to Radios</a>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public int Id { get; set; }
+
+    private Radio? radio;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var radios = await RadioService.GetAllRadiosAsync();
+        radio = radios.FirstOrDefault(r => r.Id == Id);
+
+        if (radio == null)
+        {
+            NavigationManager.NavigateTo("/radios");
+        }
+    }
+}

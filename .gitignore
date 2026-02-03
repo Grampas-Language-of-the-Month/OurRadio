@@ -485,3 +485,6 @@ $RECYCLE.BIN/
 
 # Our SQLite db file
 ourradio.db
+
+# Uploaded files folder
+unsafe_uploads/

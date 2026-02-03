@@ -89,7 +89,6 @@ else
     @* Upload stuff *@
     private List<IBrowserFile> loadedFiles = [];
     private string uploadedFilename = string.Empty;
-    private bool isLoading;
     private int maxFileSize = 1024 * 1024 * 50;
 
     protected override async Task OnInitializedAsync()
@@ -128,7 +127,7 @@ else
 
     private async Task LoadFiles(InputFileChangeEventArgs e)
     {
-        isLoading = true;
+        isSaving = true;
         loadedFiles.Clear();
 
         var file = e.File;
@@ -167,7 +166,7 @@ else
                 file.Name, ex.Message);
         }
 
-        isLoading = false;
+        isSaving = false;
     }
 
     private async Task SaveNewSong()
