@@ -3,6 +3,7 @@
 @using OurRadio.Models
 @using OurRadio.Data
 @using System.Threading.Tasks
+@using TagLib
 @inject ILogger<Songs> Logger
 @inject IWebHostEnvironment Environment
 @inject SongService SongService
@@ -30,10 +31,6 @@
                         <InputText class="form-control" @bind-Value="newSong.Title" />
                     </div>
                     @* TODO: need to figure out duration of song server side instead                 *@
-                    <div class="mb-3">
-                        <label class="form-label">Duration (seconds)</label>
-                        <InputNumber class="form-control" @bind-Value="newSong.DurationSeconds" />
-                    </div>
                     <div class="mb-3">>
                         <label class="form-label">Audio File</label>
                         <InputFile OnChange="LoadFiles" />
@@ -121,9 +118,9 @@ else
             var path = Path.Combine(Environment.ContentRootPath,
                 Environment.EnvironmentName, "unsafe_uploads",
                 uploadedFilename);
-            if (File.Exists(path))
+            if (System.IO.File.Exists(path))
             {
-                File.Delete(path);
+                System.IO.File.Delete(path);
                 Logger.LogInformation("Deleted unused uploaded file: {Filename}", uploadedFilename);
             }
         }
@@ -142,12 +139,23 @@ else
                 Environment.EnvironmentName, "unsafe_uploads",
                 trustedFileName);
 
-            await using FileStream fs = new(path, FileMode.Create);
-            await file.OpenReadStream(maxFileSize).CopyToAsync(fs);
+            await using (FileStream fs = new(path, FileMode.Create))
+            {
+                await file.OpenReadStream(maxFileSize).CopyToAsync(fs);
+            }
 
             loadedFiles.Add(file);
             uploadedFilename = trustedFileName;
             newSong.Filename = trustedFileName;
+
+            @* Compute duration of song from file *@
+            using (var tfile = TagLib.File.Create(path))
+            {
+                int duration = (int)tfile.Properties.Duration.TotalSeconds;
+                Logger.LogInformation("Computed duration of file {Filename}: {Duration} seconds",
+                    trustedFileName, duration);
+                newSong.DurationSeconds = (int)tfile.Properties.Duration.TotalSeconds;
+            }
 
             Logger.LogInformation(
                 "Unsafe Filename: {UnsafeFilename} File saved: {Filename}",
