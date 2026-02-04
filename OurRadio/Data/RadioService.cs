@@ -43,5 +43,34 @@ namespace OurRadio.Data
                 await _context.SaveChangesAsync();
             }
         }
+
+        public async Task<List<Song>> GetSongsForRadioAsync(int radioId)
+        {
+            return await _context.RadioSongs
+                .Where(rs => rs.RadioId == radioId)
+                .Include(rs => rs.Song)
+                .Select(rs => rs.Song)
+                .AsNoTracking()
+                .ToListAsync();
+        }
+
+        public async Task AddSongToRadioAsync(int radioId, int songId)
+        {
+            var exists = await _context.RadioSongs
+                .AnyAsync(rs => rs.RadioId == radioId && rs.SongId == songId);
+
+            if (exists)
+            {
+                throw new InvalidOperationException($"Song {songId} is already added to the radio {radioId}.");
+            }
+
+            var radioSong = new RadioSong
+            {
+                RadioId = radioId,
+                SongId = songId
+            };
+            _context.RadioSongs.Add(radioSong);
+            await _context.SaveChangesAsync();
+        }
     }
 }

@@ -1,5 +1,6 @@
 @page "/songs"
 @rendermode InteractiveServer
+@using Microsoft.EntityFrameworkCore
 @using OurRadio.Models
 @using OurRadio.Data
 @using System.Threading.Tasks
@@ -7,15 +8,16 @@
 @inject ILogger<Songs> Logger
 @inject IWebHostEnvironment Environment
 @inject SongService SongService
+@inject RadioService RadioService
 @inject IJSRuntime JSRuntime
 
 <PageTitle>Songs</PageTitle>
 
 <h1>Songs</h1>
 
-<button class="btn btn-primary mb-3" @onclick="ShowAddForm">Add New Song</button>
+<button class="btn btn-primary mb-3" @onclick="ShowAddSongForm">Add New Song</button>
 
-@if (isAddModalOpen)
+@if (isAddSongModalOpen)
 {
     <div class="modal-backdrop fade show"></div>
     <div class="modal fade show d-block" tabindex="-1" role="dialog" aria-modal="true">
@@ -23,7 +25,7 @@
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title">Add Song</h5>
-                    <button type="button" class="btn-close" @onclick="CloseAddForm" aria-label="Close"></button>
+                    <button type="button" class="btn-close" @onclick="CloseAddSongForm" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
                     <div class="mb-3">
@@ -37,8 +39,50 @@
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button class="btn btn-secondary" @onclick="CloseAddForm">Cancel</button>
+                    <button class="btn btn-secondary" @onclick="CloseAddSongForm">Cancel</button>
                     <button class="btn btn-primary" @onclick="SaveNewSong" disabled="@isSaving">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@if (isAddToRadioModalOpen)
+{
+    <div class="modal-backdrop fade show"></div>
+    <div class="modal fade show d-block" tabindex="-1" role="dialog" aria-modal="true">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Add Song to Radio</h5>
+                    <button type="button" class="btn-close" @onclick="CloseAddToRadioForm" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    @if (addToRadioErrorOccurred)
+                    {
+                        <div class="alert alert-danger" role="alert">
+                            <p>There was an error adding the song to the radio. Please make sure the song isn't already added.</p>
+                        </div>
+                    }
+                    <div class="mb-3">
+                        <label class="form-label">Radio</label>
+                        <InputSelect class="form-select" @bind-Value="newRadioSong.RadioId">
+                            <option value="0">-- Select Radio --</option>
+                            @if (radios is not null)
+                            {
+                                @foreach (var radio in radios)
+                                {
+                                    <option value="@radio.Id">@radio.Name</option>
+                                }
+                            } else {
+                                <option disabled>Loading radios...</option>
+                            }
+                        </InputSelect>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="CloseAddToRadioForm">Cancel</button>
+                    <button class="btn btn-primary" @onclick="SaveSongToRadio" disabled="@isSaving">Save</button>
                 </div>
             </div>
         </div>
@@ -72,6 +116,7 @@ else
                     <td>@song.DurationSeconds seconds</td>
                     <td>@song.Filename</td>
                     <td>
+                        <button class="btn btn-primary btn-sm me-2" @onclick="() => ShowAddToRadioForm(song.Id)">Add to Radio</button>
                         <button class="btn btn-danger btn-sm" @onclick="() => DeleteSong(song.Id)">Delete</button>
                     </td>
                 </tr>
@@ -83,13 +128,18 @@ else
 @code {
     private List<Song>? songs;
     @* Modal stuff *@
-    private bool isAddModalOpen;
+    private bool isAddSongModalOpen;
+    private bool isAddToRadioModalOpen;
     private bool isSaving;
     private Song newSong = new();
     @* Upload stuff *@
     private List<IBrowserFile> loadedFiles = [];
     private string uploadedFilename = string.Empty;
     private int maxFileSize = 1024 * 1024 * 50;
+    @* add to radio stuff *@
+    private RadioSong newRadioSong = new();
+    private List<Radio>? radios;
+    private bool addToRadioErrorOccurred = false;
 
     protected override async Task OnInitializedAsync()
     {
@@ -101,16 +151,16 @@ else
         songs = await SongService.GetAllSongsAsync();
     }
 
-    private void ShowAddForm()
+    private void ShowAddSongForm()
     {
         newSong = new Song();
         uploadedFilename = string.Empty;
-        isAddModalOpen = true;
+        isAddSongModalOpen = true;
     }
 
-    private void CloseAddForm()
+    private void CloseAddSongForm()
     {
-        isAddModalOpen = false;
+        isAddSongModalOpen = false;
         @* Delete unused song files *@
         if (!string.IsNullOrEmpty(uploadedFilename))
         {
@@ -123,6 +173,21 @@ else
                 Logger.LogInformation("Deleted unused uploaded file: {Filename}", uploadedFilename);
             }
         }
+    }
+
+    private async Task ShowAddToRadioForm(int songId)
+    {
+        newRadioSong = new RadioSong { SongId = songId };
+        radios = await RadioService.GetAllRadiosAsync();
+        songs = await SongService.GetAllSongsAsync();
+        addToRadioErrorOccurred = false;
+        isAddToRadioModalOpen = true;
+    }
+
+    private void CloseAddToRadioForm()
+    {
+        isAddToRadioModalOpen = false;
+        addToRadioErrorOccurred = false;
     }
 
     private async Task LoadFiles(InputFileChangeEventArgs e)
@@ -179,7 +244,7 @@ else
         isSaving = true;
         await SongService.AddSongAsync(newSong);
         isSaving = false;
-        isAddModalOpen = false;
+        isAddSongModalOpen = false;
         await LoadSongs();
     }
 
@@ -189,6 +254,34 @@ else
         {
             await SongService.DeleteSongAsync(id);
             await LoadSongs();
+        }
+    }
+
+    private async Task SaveSongToRadio()
+    {
+        if (newRadioSong.RadioId == 0 || newRadioSong.SongId == 0)
+        {
+            return;
+        }
+
+        isSaving = true;
+        try
+        {
+            await RadioService.AddSongToRadioAsync(newRadioSong.RadioId, newRadioSong.SongId);
+            isSaving = false;
+            isAddToRadioModalOpen = false;
+        }
+        catch (DbUpdateException ex)
+        {
+            Logger.LogWarning("Error adding song to radio: {Error}", ex.Message);
+            isSaving = false;
+            addToRadioErrorOccurred = true;
+        }
+        catch (InvalidOperationException ex)
+        {
+            Logger.LogWarning(ex.Message);
+            isSaving = false;
+            addToRadioErrorOccurred = true;
         }
     }
 }

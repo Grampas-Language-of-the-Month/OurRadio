@@ -18,6 +18,26 @@ else
         <p>@radio.Description</p>
         <a href="/radios" class="btn btn-secondary">Back to Radios</a>
     </div>
+
+    <table class="table">
+        <thread>
+            <tr>
+                <th>Title</th>
+                <th>Duration</th>
+                <th>Filename</th>
+            </tr>
+        </thread>
+        <tbody>
+            @foreach (var song in songs)
+            {
+                <tr>
+                    <td>@song.Title</td>
+                    <td>@song.DurationSeconds seconds</td>
+                    <td>@song.Filename</td>
+                </tr>
+            }
+        </tbody>
+    </table>
 }
 
 @code {
@@ -25,6 +45,8 @@ else
     public int Id { get; set; }
 
     private Radio? radio;
+
+    private List<Song>? songs;
 
     protected override async Task OnInitializedAsync()
     {
@@ -35,5 +57,7 @@ else
         {
             NavigationManager.NavigateTo("/radios");
         }
+
+        songs = await RadioService.GetSongsForRadioAsync(Id);
     }
 }
