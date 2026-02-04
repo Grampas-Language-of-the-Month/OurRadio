@@ -18,7 +18,6 @@
 
   <ItemGroup>
     <Watch Remove="**\*.db" />
-    <Watch Remove="Development\unsafe_uploads\**" />
   </ItemGroup>
 
 </Project>

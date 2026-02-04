@@ -199,7 +199,7 @@ else
         try
         {
             var trustedFileName = Path.GetRandomFileName() + Path.GetExtension(file.Name);
-            var path = Path.Combine(Environment.ContentRootPath,
+            var path = Path.Combine(Directory.GetParent(Environment.ContentRootPath)!.FullName,
                 Environment.EnvironmentName, "unsafe_uploads",
                 trustedFileName);
 
