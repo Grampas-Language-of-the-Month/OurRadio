@@ -45,7 +45,7 @@ namespace OurRadio.Data
             // delete song file from storage if needed
             if (song != null && !string.IsNullOrEmpty(song.Filename))
             {
-                var path = Path.Combine(_environment.ContentRootPath,
+                var path = Path.Combine(Directory.GetParent(_environment.ContentRootPath)!.FullName,
                     _environment.EnvironmentName, "unsafe_uploads",
                     song.Filename);
 

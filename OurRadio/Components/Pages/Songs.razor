@@ -164,7 +164,7 @@ else
         @* Delete unused song files *@
         if (!string.IsNullOrEmpty(uploadedFilename))
         {
-            var path = Path.Combine(Environment.ContentRootPath,
+            var path = Path.Combine(Directory.GetParent(Environment.ContentRootPath)!.FullName,
                 Environment.EnvironmentName, "unsafe_uploads",
                 uploadedFilename);
             if (System.IO.File.Exists(path))
