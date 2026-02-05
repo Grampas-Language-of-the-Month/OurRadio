@@ -2,8 +2,11 @@
 @rendermode InteractiveServer
 @using OurRadio.Models
 @using OurRadio.Data
+@using Microsoft.AspNetCore.SignalR.Client
 @inject RadioService RadioService
 @inject IJSRuntime JsRuntime
+@inject NavigationManager NavigationManager
+@implements IAsyncDisposable
 
 <PageTitle>Radios</PageTitle>
 
@@ -55,6 +58,7 @@ else
             <tr>
                 <th>Name</th>
                 <th>Description</th>
+                <th>Now Playing</th>
                 <th>Actions</th>
             </tr>
         </thead>
@@ -64,6 +68,20 @@ else
                 <tr>
                     <td>@radio.Name</td>
                     <td>@radio.Description</td>
+                    <td>
+                        @if (TryGetPlayback(radio.Id, out var state))
+                        {
+                            <div>@state.Filename</div>
+                            <div class="progress" style="height:6px;">
+                                <div class="progress-bar" role="progressbar" style="width: @GetProgressPercent(state)%"></div>
+                            </div>
+                            <small class="text-muted">@GetProgressTime(state)</small>
+                        }
+                        else
+                        {
+                            <em>—</em>
+                        }
+                    </td>
                     <td>
                         <a href="@($"/radio/{radio.Id}")" class="btn btn-sm btn-primary">Visit</a>
                         <button class="btn btn-sm btn-danger" @onclick="() => DeleteRadio(radio.Id)">Delete</button>
@@ -79,15 +97,60 @@ else
     private bool isCreateModalOpen;
     private bool isSaving;
     private Radio newRadio = new();
+    private HubConnection? hubConnection;
+    private readonly Dictionary<int, RadioPlaybackState> playbackStates = new();
+    private Timer? uiTimer;
 
     protected override async Task OnInitializedAsync()
     {
         await LoadRadios();
+        await EnsureHubConnectedAsync();
+        await JoinRadiosAsync();
     }
 
     private async Task LoadRadios()
     {
         radios = await RadioService.GetAllRadiosAsync();
+    }
+
+    private async Task EnsureHubConnectedAsync()
+    {
+        if (hubConnection != null)
+        {
+            return;
+        }
+
+        hubConnection = new HubConnectionBuilder()
+            .WithUrl(NavigationManager.ToAbsoluteUri("/hubs/radio"))
+            .WithAutomaticReconnect()
+            .Build();
+
+        hubConnection.On<RadioPlaybackState>("PlaybackState", state =>
+        {
+            playbackStates[state.RadioId] = state;
+            _ = InvokeAsync(StateHasChanged);
+        });
+
+        await hubConnection.StartAsync();
+
+        uiTimer = new Timer(_ => _ = InvokeAsync(StateHasChanged), null, 1000, 1000);
+    }
+
+    private async Task JoinRadiosAsync()
+    {
+        if (hubConnection == null || radios == null)
+        {
+            return;
+        }
+
+        foreach (var radio in radios)
+        {
+            var state = await hubConnection.InvokeAsync<RadioPlaybackState?>("JoinRadio", radio.Id);
+            if (state != null)
+            {
+                playbackStates[state.RadioId] = state;
+            }
+        }
     }
 
     private void ShowCreateForm()
@@ -111,6 +174,7 @@ else
         isSaving = true;
         await RadioService.AddRadioAsync(newRadio);
         await LoadRadios();
+        await JoinRadiosAsync();
         isSaving = false;
         isCreateModalOpen = false;
     }
@@ -121,6 +185,68 @@ else
         {
             await RadioService.DeleteRadioAsync(id);
             await LoadRadios();
+            await JoinRadiosAsync();
+        }
+    }
+
+    private bool TryGetPlayback(int radioId, out RadioPlaybackState state)
+        => playbackStates.TryGetValue(radioId, out state!);
+
+    private double GetProgressPercent(RadioPlaybackState state)
+    {
+        var elapsed = GetElapsedSeconds(state);
+        if (state.DurationSeconds <= 0)
+        {
+            return 0;
+        }
+
+        var percent = (elapsed / state.DurationSeconds) * 100.0;
+        if (percent < 0)
+        {
+            percent = 0;
+        }
+
+        if (percent > 100)
+        {
+            percent = 100;
+        }
+
+        return Math.Round(percent, 1);
+    }
+
+    private string GetProgressTime(RadioPlaybackState state)
+    {
+        var elapsed = GetElapsedSeconds(state);
+        var total = state.DurationSeconds;
+        return $"{FormatSeconds(elapsed)}/{FormatSeconds(total)}";
+    }
+
+    private double GetElapsedSeconds(RadioPlaybackState state)
+    {
+        var elapsed = (DateTimeOffset.UtcNow - state.StartedAtUtc).TotalSeconds;
+        if (elapsed < 0)
+        {
+            elapsed = 0;
+        }
+
+        if (state.DurationSeconds > 0 && elapsed > state.DurationSeconds)
+        {
+            elapsed = state.DurationSeconds;
+        }
+
+        return elapsed;
+    }
+
+    private static string FormatSeconds(double seconds)
+        => TimeSpan.FromSeconds(seconds).ToString(@"mm\:ss");
+
+    public async ValueTask DisposeAsync()
+    {
+        uiTimer?.Dispose();
+
+        if (hubConnection != null)
+        {
+            await hubConnection.DisposeAsync();
         }
     }
 }
