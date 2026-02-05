@@ -2,8 +2,11 @@
 @rendermode InteractiveServer
 @using OurRadio.Models
 @using OurRadio.Data
+@using Microsoft.AspNetCore.SignalR.Client
 @inject RadioService RadioService
 @inject NavigationManager NavigationManager
+@inject IJSRuntime JS
+@implements IAsyncDisposable
 
 <PageTitle>@radio?.Name</PageTitle>
 
@@ -17,6 +20,10 @@ else
         <h1>@radio.Name</h1>
         <p>@radio.Description</p>
         <a href="/radios" class="btn btn-secondary">Back to Radios</a>
+    </div>
+
+    <div class="my-3">
+        <audio controls @ref="audioRef"></audio>
     </div>
 
     <table class="table">
@@ -48,6 +55,11 @@ else
 
     private List<Song>? songs;
 
+    private HubConnection? hubConnection;
+    private ElementReference audioRef;
+    private bool isRendered;
+    private RadioPlaybackState? pendingState;
+
     protected override async Task OnInitializedAsync()
     {
         var radios = await RadioService.GetAllRadiosAsync();
@@ -56,8 +68,78 @@ else
         if (radio == null)
         {
             NavigationManager.NavigateTo("/radios");
+            return;
         }
 
         songs = await RadioService.GetSongsForRadioAsync(Id);
+
+        hubConnection = new HubConnectionBuilder()
+            .WithUrl(NavigationManager.ToAbsoluteUri("/hubs/radio"))
+            .WithAutomaticReconnect()
+            .Build();
+
+        hubConnection.On<RadioPlaybackState>("PlaybackState", async state =>
+        {
+            await ApplyStateAsync(state);
+        });
+
+        await hubConnection.StartAsync();
+
+        var state = await hubConnection.InvokeAsync<RadioPlaybackState?>("JoinRadio", Id);
+        if (state != null)
+        {
+            await ApplyStateAsync(state);
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        isRendered = true;
+
+        if (pendingState != null)
+        {
+            var state = pendingState;
+            pendingState = null;
+            await ApplyStateAsync(state);
+        }
+    }
+
+    private async Task ApplyStateAsync(RadioPlaybackState state)
+    {
+        if (!isRendered)
+        {
+            pendingState = state;
+            return;
+        }
+
+        var src = $"/uploads/{state.Filename}";
+        var elapsed = (DateTimeOffset.UtcNow - state.StartedAtUtc).TotalSeconds;
+        if (elapsed < 0)
+        {
+            elapsed = 0;
+        }
+
+        await JS.InvokeVoidAsync("radioPlayer.setAndPlay", audioRef, src, elapsed);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (hubConnection != null)
+        {
+            try
+            {
+                await hubConnection.InvokeAsync("LeaveRadio", Id);
+            }
+            catch
+            {
+            }
+
+            await hubConnection.DisposeAsync();
+        }
     }
 }

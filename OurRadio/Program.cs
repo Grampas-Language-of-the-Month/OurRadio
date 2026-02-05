@@ -1,5 +1,7 @@
 using OurRadio.Components;
 using OurRadio.Data;
+using OurRadio.Hubs;
+using OurRadio.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.AspNetCore.StaticFiles;
@@ -9,6 +11,9 @@ var builder = WebApplication.CreateBuilder(args);
 // Add services to the container.
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
+
+builder.Services.AddSignalR();
+builder.Services.AddSingleton<RadioClockService>();
 
 // Add DbContext with SQLite
 builder.Services.AddDbContext<AppDbContext>(options =>
@@ -53,6 +58,7 @@ if (app.Environment.IsDevelopment())
 app.UseAntiforgery();
 
 app.MapStaticAssets();
+app.MapHub<RadioHub>("/hubs/radio");
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 
