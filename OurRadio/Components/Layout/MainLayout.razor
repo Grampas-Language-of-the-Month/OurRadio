@@ -6,8 +6,17 @@
     </div>
 
     <main>
-        <div class="top-row px-4">
-            <a href="https://learn.microsoft.com/aspnet/core/" target="_blank">About</a>
+        <div class="top-row px-4 auth-bar">
+            <a href="https://learn.microsoft.com/aspnet/core/" target="_blank" rel="noopener noreferrer">About</a>
+            <AuthorizeView Context="auth">
+                <Authorized>
+                    <span class="user-label">@(string.IsNullOrWhiteSpace(auth.User.Identity?.Name) ? "Discord user" : auth.User.Identity?.Name)</span>
+                    <a href="logout" data-enhance-nav="false">Log out</a>
+                </Authorized>
+                <NotAuthorized>
+                    <a class="btn btn-sm btn-primary" href="login" data-enhance-nav="false">Log in with Discord</a>
+                </NotAuthorized>
+            </AuthorizeView>
         </div>
 
         <article class="content px-4">

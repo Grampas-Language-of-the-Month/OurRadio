@@ -488,3 +488,7 @@ ourradio.db
 
 # Uploaded files folder
 unsafe_uploads/
+
+# appsettings.Development.json file, which may contain secrets
+appsettings.Development.json
+appsettings.json

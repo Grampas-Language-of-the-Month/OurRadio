@@ -5,12 +5,19 @@ using OurRadio.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.AspNetCore.StaticFiles;
+using Microsoft.Extensions.Options;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
+using AspNet.Security.OAuth.Discord;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
+
+builder.Services.AddAuthorization();
+builder.Services.AddCascadingAuthenticationState();
 
 builder.Services.AddSignalR();
 builder.Services.AddSingleton<RadioClockService>();
@@ -22,7 +29,25 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 builder.Services.AddScoped<SongService>();
 builder.Services.AddScoped<RadioService>();
 
+// Authentication and Authorization
+builder.Services.AddAuthentication(options =>
+{
+    options.DefaultScheme = CookieAuthenticationDefaults.AuthenticationScheme;
+    options.DefaultChallengeScheme = DiscordAuthenticationDefaults.AuthenticationScheme;
+})
+.AddCookie()
+.AddDiscord(options =>
+{
+    options.ClientId = builder.Configuration["Authentication:Discord:ClientId"]!;
+    options.ClientSecret = builder.Configuration["Authentication:Discord:ClientSecret"]!;
+    options.CallbackPath = "/signin-discord";
+    options.SaveTokens = true;
+});
+
 var app = builder.Build();
+
+app.UseAuthentication();
+app.UseAuthorization();
 
 // Configure the HTTP request pipeline.
 if (!app.Environment.IsDevelopment())
@@ -61,5 +86,19 @@ app.MapStaticAssets();
 app.MapHub<RadioHub>("/hubs/radio");
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
+
+app.MapGet("/login", async context =>
+{
+    await context.ChallengeAsync(DiscordAuthenticationDefaults.AuthenticationScheme, new AuthenticationProperties
+    {
+        RedirectUri = "/"
+    });
+});
+
+app.MapGet("/logout", async context =>
+{
+    await context.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+    context.Response.Redirect("/");
+});
 
 app.Run();

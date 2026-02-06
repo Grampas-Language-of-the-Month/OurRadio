@@ -4,6 +4,7 @@
 @using OurRadio.Data
 @using Microsoft.AspNetCore.SignalR.Client
 @inject RadioService RadioService
+@inject SongService SongService
 @inject IJSRuntime JsRuntime
 @inject NavigationManager NavigationManager
 @implements IAsyncDisposable
@@ -71,7 +72,7 @@ else
                     <td>
                         @if (TryGetPlayback(radio.Id, out var state))
                         {
-                            <div>@state.Filename</div>
+                            <div>@GetSongTitle(state.SongId)</div>
                             <div class="progress" style="height:6px;">
                                 <div class="progress-bar" role="progressbar" style="width: @GetProgressPercent(state)%"></div>
                             </div>
@@ -99,6 +100,7 @@ else
     private Radio newRadio = new();
     private HubConnection? hubConnection;
     private readonly Dictionary<int, RadioPlaybackState> playbackStates = new();
+    private readonly Dictionary<int, string> songTitles = new();
     private Timer? uiTimer;
 
     protected override async Task OnInitializedAsync()
@@ -128,6 +130,7 @@ else
         hubConnection.On<RadioPlaybackState>("PlaybackState", state =>
         {
             playbackStates[state.RadioId] = state;
+            _ = EnsureSongTitleAsync(state.SongId);
             _ = InvokeAsync(StateHasChanged);
         });
 
@@ -149,6 +152,7 @@ else
             if (state != null)
             {
                 playbackStates[state.RadioId] = state;
+                _ = EnsureSongTitleAsync(state.SongId);
             }
         }
     }
@@ -239,6 +243,21 @@ else
 
     private static string FormatSeconds(double seconds)
         => TimeSpan.FromSeconds(seconds).ToString(@"mm\:ss");
+
+    private async Task EnsureSongTitleAsync(int songId)
+    {
+        if (songId <= 0 || songTitles.ContainsKey(songId))
+        {
+            return;
+        }
+
+        var song = await SongService.GetSongByIdAsync(songId);
+        songTitles[songId] = song?.Title ?? $"Song {songId}";
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private string GetSongTitle(int songId)
+        => songTitles.TryGetValue(songId, out var title) ? title : "Loading...";
 
     public async ValueTask DisposeAsync()
     {
