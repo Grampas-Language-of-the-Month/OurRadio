@@ -85,7 +85,14 @@ else
                     </td>
                     <td>
                         <a href="@($"/radio/{radio.Id}")" class="btn btn-sm btn-primary">Visit</a>
-                        <button class="btn btn-sm btn-danger" @onclick="() => DeleteRadio(radio.Id)">Delete</button>
+                        <AuthorizeView>
+                            <Authorized>
+                                <button class="btn btn-sm btn-danger" @onclick="() => DeleteRadio(radio.Id)">Delete</button>
+                            </Authorized>
+                            <NotAuthorized>
+                                <button class="btn btn-sm btn-danger" disabled>Delete</button>
+                            </NotAuthorized>
+                        </AuthorizeView>
                     </td>
                 </tr>
             }

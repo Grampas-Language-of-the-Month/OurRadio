@@ -8,12 +8,14 @@ namespace OurRadio.Data
         private readonly AppDbContext _context;
         private readonly IWebHostEnvironment _environment;
         private readonly ILogger<SongService> _logger;
+        private readonly AuthGuard _authGuard;
 
-        public SongService(AppDbContext context, IWebHostEnvironment environment, ILogger<SongService> logger)
+        public SongService(AppDbContext context, IWebHostEnvironment environment, ILogger<SongService> logger, AuthGuard authGuard)
         {
             _context = context;
             _environment = environment;
             _logger = logger;
+            _authGuard = authGuard;
         }
 
         public async Task<List<Song>> GetAllSongsAsync()
@@ -28,18 +30,21 @@ namespace OurRadio.Data
 
         public async Task AddSongAsync(Song song)
         {
+            await _authGuard.EnsureAuthenticatedAsync();
             _context.Songs.Add(song);
             await _context.SaveChangesAsync();
         }
 
         public async Task UpdateSongAsync(Song song)
         {
+            await _authGuard.EnsureAuthenticatedAsync();
             _context.Songs.Update(song);
             await _context.SaveChangesAsync();
         }
 
         public async Task DeleteSongAsync(int id)
         {
+            await _authGuard.EnsureAuthenticatedAsync();
             var song = await _context.Songs.FindAsync(id);
 
             // delete song file from storage if needed

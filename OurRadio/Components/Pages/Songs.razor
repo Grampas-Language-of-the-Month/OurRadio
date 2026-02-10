@@ -116,8 +116,16 @@ else
                     <td>@song.DurationSeconds seconds</td>
                     <td>@song.Filename</td>
                     <td>
-                        <button class="btn btn-primary btn-sm me-2" @onclick="() => ShowAddToRadioForm(song.Id)">Add to Radio</button>
-                        <button class="btn btn-danger btn-sm" @onclick="() => DeleteSong(song.Id)">Delete</button>
+                        <AuthorizeView>
+                            <Authorized>
+                                <button class="btn btn-primary btn-sm me-2" @onclick="() => ShowAddToRadioForm(song.Id)">Add to Radio</button>
+                                <button class="btn btn-danger btn-sm" @onclick="() => DeleteSong(song.Id)">Delete</button>
+                            </Authorized>
+                            <NotAuthorized>
+                                <button class="btn btn-primary btn-sm me-2" disabled>Add to Radio</button>
+                                <button class="btn btn-danger btn-sm" disabled>Delete</button>
+                            </NotAuthorized>
+                        </AuthorizeView>
                     </td>
                 </tr>
             }

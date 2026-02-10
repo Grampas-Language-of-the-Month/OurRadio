@@ -28,6 +28,7 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 
 builder.Services.AddScoped<SongService>();
 builder.Services.AddScoped<RadioService>();
+builder.Services.AddScoped<AuthGuard>();
 
 // Authentication and Authorization
 builder.Services.AddAuthentication(options =>

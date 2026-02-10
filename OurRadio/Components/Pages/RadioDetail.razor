@@ -35,13 +35,28 @@ else
             </tr>
         </thead>
         <tbody>
-            @foreach (var song in songs)
+            @if (songs == null)
             {
                 <tr>
-                    <td>@song.Title</td>
-                    <td>@song.DurationSeconds seconds</td>
-                    <td>@song.Filename</td>
+                    <td colspan="3"><em>Loading songs...</em></td>
                 </tr>
+            }
+            else if (songs.Count == 0)
+            {
+                <tr>
+                    <td colspan="3"><em>No songs found.</em></td>
+                </tr>
+            }
+            else
+            {
+                @foreach (var song in songs)
+                {
+                    <tr>
+                        <td>@song.Title</td>
+                        <td>@song.DurationSeconds seconds</td>
+                        <td>@song.Filename</td>
+                    </tr>
+                }
             }
         </tbody>
     </table>

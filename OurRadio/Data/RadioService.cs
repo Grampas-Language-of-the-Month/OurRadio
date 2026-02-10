@@ -6,10 +6,12 @@ namespace OurRadio.Data
     public class RadioService
     {
         private readonly AppDbContext _context;
+        private readonly AuthGuard _authGuard;
 
-        public RadioService(AppDbContext context)
+        public RadioService(AppDbContext context, AuthGuard authGuard)
         {
             _context = context;
+            _authGuard = authGuard;
         }
 
         public async Task<List<Radio>> GetAllRadiosAsync()
@@ -24,18 +26,21 @@ namespace OurRadio.Data
 
         public async Task AddRadioAsync(Radio radio)
         {
+            await _authGuard.EnsureAuthenticatedAsync();
             _context.Radios.Add(radio);
             await _context.SaveChangesAsync();
         }
 
         public async Task UpdateRadioAsync(Radio radio)
         {
+            await _authGuard.EnsureAuthenticatedAsync();
             _context.Radios.Update(radio);
             await _context.SaveChangesAsync();
         }
 
         public async Task DeleteRadioAsync(int id)
         {
+            await _authGuard.EnsureAuthenticatedAsync();
             var radio = await _context.Radios.FindAsync(id);
             if (radio != null)
             {
@@ -56,6 +61,7 @@ namespace OurRadio.Data
 
         public async Task AddSongToRadioAsync(int radioId, int songId)
         {
+            await _authGuard.EnsureAuthenticatedAsync();
             var exists = await _context.RadioSongs
                 .AnyAsync(rs => rs.RadioId == radioId && rs.SongId == songId);
 
