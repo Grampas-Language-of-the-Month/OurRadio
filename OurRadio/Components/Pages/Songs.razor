@@ -113,7 +113,7 @@ else
             {
                 <tr>
                     <td>@song.Title</td>
-                    <td>@song.DurationSeconds seconds</td>
+                    <td>@secondsToDurationDisplay(song.DurationSeconds)</td>
                     <td>@song.Filename</td>
                     <td>
                         <AuthorizeView>
@@ -262,6 +262,19 @@ else
         {
             await SongService.DeleteSongAsync(id);
             await LoadSongs();
+        }
+    }
+
+    private string secondsToDurationDisplay(int seconds)
+    {
+        var ts = TimeSpan.FromSeconds(seconds);
+        if (ts.Hours > 0)
+        {
+            return ts.ToString(@"h\:mm\:ss");
+        }
+        else
+        {
+            return ts.ToString(@"m\:ss");
         }
     }
 

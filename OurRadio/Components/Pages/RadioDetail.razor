@@ -22,6 +22,18 @@ else
         <a href="/radios" class="btn btn-secondary">Back to Radios</a>
     </div>
 
+    <div class="mt-3">
+        <strong>Now playing:</strong>
+        @if (currentSong == null)
+        {
+            <span><em>Unknown</em></span>
+        }
+        else
+        {
+            <span>@currentSong.Title</span>
+        }
+    </div>
+
     <div class="my-3">
         <audio controls @ref="audioRef"></audio>
     </div>
@@ -53,7 +65,7 @@ else
                 {
                     <tr>
                         <td>@song.Title</td>
-                        <td>@song.DurationSeconds seconds</td>
+                        <td>@secondsToDurationDisplay(song.DurationSeconds)</td>
                         <td>@song.Filename</td>
                     </tr>
                 }
@@ -74,6 +86,7 @@ else
     private ElementReference audioRef;
     private bool isRendered;
     private RadioPlaybackState? pendingState;
+    private Song? currentSong;
 
     protected override async Task OnInitializedAsync()
     {
@@ -132,6 +145,13 @@ else
             return;
         }
 
+        if (songs != null)
+        {
+            currentSong = songs.FirstOrDefault(song => song.Id == state.SongId);
+        }
+
+        await InvokeAsync(StateHasChanged);
+
         var src = $"/uploads/{state.Filename}";
         var elapsed = (DateTimeOffset.UtcNow - state.StartedAtUtc).TotalSeconds;
         if (elapsed < 0)
@@ -140,6 +160,19 @@ else
         }
 
         await JS.InvokeVoidAsync("radioPlayer.setAndPlay", audioRef, src, elapsed);
+    }
+
+    private string secondsToDurationDisplay(int seconds)
+    {
+        var ts = TimeSpan.FromSeconds(seconds);
+        if (ts.Hours > 0)
+        {
+            return ts.ToString(@"h\:mm\:ss");
+        }
+        else
+        {
+            return ts.ToString(@"m\:ss");
+        }
     }
 
     public async ValueTask DisposeAsync()
