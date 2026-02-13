@@ -78,5 +78,12 @@ namespace OurRadio.Data
             _context.RadioSongs.Add(radioSong);
             await _context.SaveChangesAsync();
         }
+
+        public async Task<bool> IsSongInRadioAsync(int radioId, int songId)
+        {
+            return await _context.RadioSongs
+                .AsNoTracking()
+                .AnyAsync(rs => rs.RadioId == radioId && rs.SongId == songId);
+        }
     }
 }

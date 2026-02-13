@@ -38,12 +38,34 @@ else
         <audio controls @ref="audioRef"></audio>
     </div>
 
+    <div class="mb-3">
+        <strong>Queue:</strong>
+        @if (!isQueueLoaded)
+        {
+            <span><em>Loading...</em></span>
+        }
+        else if (queuedSongIds.Count == 0)
+        {
+            <span><em>No queued songs.</em></span>
+        }
+        else
+        {
+            <ol class="mt-2">
+                @foreach (var queuedSong in GetQueuedSongs())
+                {
+                    <li>@queuedSong</li>
+                }
+            </ol>
+        }
+    </div>
+
     <table class="table">
         <thead>
             <tr>
                 <th>Title</th>
                 <th>Duration</th>
                 <th>Filename</th>
+                <th>Queue</th>
             </tr>
         </thead>
         <tbody>
@@ -67,6 +89,11 @@ else
                         <td>@song.Title</td>
                         <td>@secondsToDurationDisplay(song.DurationSeconds)</td>
                         <td>@song.Filename</td>
+                        <td>
+                            <button class="btn btn-outline-secondary btn-sm" @onclick="() => QueueSongAsync(song)">
+                                Queue
+                            </button>
+                        </td>
                     </tr>
                 }
             }
@@ -87,6 +114,8 @@ else
     private bool isRendered;
     private RadioPlaybackState? pendingState;
     private Song? currentSong;
+    private List<int> queuedSongIds = new();
+    private bool isQueueLoaded;
 
     protected override async Task OnInitializedAsync()
     {
@@ -111,6 +140,13 @@ else
             await ApplyStateAsync(state);
         });
 
+        hubConnection.On<int[]>("QueueUpdated", queue =>
+        {
+            queuedSongIds = queue.ToList();
+            isQueueLoaded = true;
+            return InvokeAsync(StateHasChanged);
+        });
+
         await hubConnection.StartAsync();
 
         var state = await hubConnection.InvokeAsync<RadioPlaybackState?>("JoinRadio", Id);
@@ -118,6 +154,10 @@ else
         {
             await ApplyStateAsync(state);
         }
+
+        var queue = await hubConnection.InvokeAsync<int[]>("GetQueue", Id);
+        queuedSongIds = queue.ToList();
+        isQueueLoaded = true;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -160,6 +200,27 @@ else
         }
 
         await JS.InvokeVoidAsync("radioPlayer.setAndPlay", audioRef, src, elapsed);
+    }
+
+    private async Task QueueSongAsync(Song song)
+    {
+        if (hubConnection == null)
+        {
+            return;
+        }
+
+        await hubConnection.InvokeAsync("QueueSong", Id, song.Id);
+    }
+
+    private IEnumerable<string> GetQueuedSongs()
+    {
+        if (songs == null)
+        {
+            return queuedSongIds.Select(songId => $"Song {songId}");
+        }
+
+        var byId = songs.ToDictionary(song => song.Id, song => song.Title);
+        return queuedSongIds.Select(songId => byId.TryGetValue(songId, out var title) ? title : $"Song {songId}");
     }
 
     private string secondsToDurationDisplay(int seconds)

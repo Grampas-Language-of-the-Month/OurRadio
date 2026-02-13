@@ -10,6 +10,7 @@ public sealed class RadioClockService
 {
     private readonly ConcurrentDictionary<int, RadioPlaybackState> _states = new();
     private readonly ConcurrentDictionary<int, CancellationTokenSource> _loops = new();
+    private readonly ConcurrentDictionary<int, ConcurrentQueue<int>> _queues = new();
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IHubContext<RadioHub> _hub;
 
@@ -32,6 +33,16 @@ public sealed class RadioClockService
         });
     }
 
+    public async Task EnqueueSongAsync(int radioId, int songId, CancellationToken token = default)
+    {
+        var queue = _queues.GetOrAdd(radioId, _ => new ConcurrentQueue<int>());
+        queue.Enqueue(songId);
+        await BroadcastQueueUpdatedAsync(radioId, token);
+    }
+
+    public int[] GetQueueSnapshot(int radioId)
+        => _queues.TryGetValue(radioId, out var queue) ? queue.ToArray() : Array.Empty<int>();
+
     private async Task RunLoopAsync(int radioId, CancellationToken token)
     {
         while (!token.IsCancellationRequested)
@@ -48,6 +59,11 @@ public sealed class RadioClockService
             }
 
             var song = songs[Random.Shared.Next(songs.Count)];
+            var queuedSong = await TryDequeueSongAsync(radioId, songs, token);
+            if (queuedSong != null)
+            {
+                song = queuedSong;
+            }
             var duration = Math.Max(song.DurationSeconds, 1);
 
             var state = new RadioPlaybackState
@@ -64,6 +80,32 @@ public sealed class RadioClockService
 
             await Task.Delay(TimeSpan.FromSeconds(duration), token);
         }
+    }
+
+    private async Task<Song?> TryDequeueSongAsync(int radioId, List<Song> songs, CancellationToken token)
+    {
+        if (!_queues.TryGetValue(radioId, out var queue))
+        {
+            return null;
+        }
+
+        while (queue.TryDequeue(out var songId))
+        {
+            var match = songs.FirstOrDefault(song => song.Id == songId);
+            await BroadcastQueueUpdatedAsync(radioId, token);
+            if (match != null)
+            {
+                return match;
+            }
+        }
+
+        return null;
+    }
+
+    private Task BroadcastQueueUpdatedAsync(int radioId, CancellationToken token)
+    {
+        var queue = GetQueueSnapshot(radioId);
+        return _hub.Clients.Group(GetGroup(radioId)).SendAsync("QueueUpdated", queue, token);
     }
 
     public static string GetGroup(int radioId) => $"radio:{radioId}";

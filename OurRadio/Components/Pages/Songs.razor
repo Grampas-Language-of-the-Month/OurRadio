@@ -17,6 +17,21 @@
 
 <button class="btn btn-primary mb-3" @onclick="ShowAddSongForm">Add New Song</button>
 
+<div class="my-3">
+    <strong>Preview:</strong>
+    @if (string.IsNullOrWhiteSpace(previewSongTitle))
+    {
+        <span><em>None</em></span>
+    }
+    else
+    {
+        <span>@previewSongTitle</span>
+    }
+    <div class="mt-2">
+        <audio controls @ref="previewAudioRef"></audio>
+    </div>
+</div>
+
 @if (isAddSongModalOpen)
 {
     <div class="modal-backdrop fade show"></div>
@@ -33,7 +48,7 @@
                         <InputText class="form-control" @bind-Value="newSong.Title" />
                     </div>
                     @* TODO: need to figure out duration of song server side instead                 *@
-                    <div class="mb-3">>
+                    <div class="mb-3">
                         <label class="form-label">Audio File</label>
                         <InputFile OnChange="LoadFiles" />
                     </div>
@@ -116,6 +131,7 @@ else
                     <td>@secondsToDurationDisplay(song.DurationSeconds)</td>
                     <td>@song.Filename</td>
                     <td>
+                        <button class="btn btn-outline-primary btn-sm me-2" @onclick="() => PreviewSong(song)">Play</button>
                         <AuthorizeView>
                             <Authorized>
                                 <button class="btn btn-primary btn-sm me-2" @onclick="() => ShowAddToRadioForm(song.Id)">Add to Radio</button>
@@ -140,6 +156,8 @@ else
     private bool isAddToRadioModalOpen;
     private bool isSaving;
     private Song newSong = new();
+    private ElementReference previewAudioRef;
+    private string? previewSongTitle;
     @* Upload stuff *@
     private List<IBrowserFile> loadedFiles = [];
     private string uploadedFilename = string.Empty;
@@ -148,6 +166,16 @@ else
     private RadioSong newRadioSong = new();
     private List<Radio>? radios;
     private bool addToRadioErrorOccurred = false;
+
+    protected override Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            previewSongTitle = string.Empty;
+        }
+
+        return Task.CompletedTask;
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -254,6 +282,19 @@ else
         isSaving = false;
         isAddSongModalOpen = false;
         await LoadSongs();
+    }
+
+    private async Task PreviewSong(Song song)
+    {
+        if (string.IsNullOrWhiteSpace(song.Filename))
+        {
+            Logger.LogWarning("Song {SongId} has no filename for preview.", song.Id);
+            return;
+        }
+
+        previewSongTitle = song.Title;
+        var src = $"/uploads/{song.Filename}";
+        await JSRuntime.InvokeVoidAsync("radioPlayer.setAndPlay", previewAudioRef, src, 0);
     }
 
     private async Task DeleteSong(int id)
