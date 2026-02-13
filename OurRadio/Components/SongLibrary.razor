@@ -1,0 +1,403 @@
+@using Microsoft.EntityFrameworkCore
+@using OurRadio.Models
+@using OurRadio.Data
+@using TagLib
+@inject ILogger<SongLibrary> Logger
+@inject IWebHostEnvironment Environment
+@inject SongService SongService
+@inject RadioService RadioService
+@inject IJSRuntime JSRuntime
+
+@if (ShowHeader)
+{
+    <h1>@HeaderText</h1>
+}
+
+@if (ShowAddSongButton)
+{
+    <button class="btn btn-primary mb-3" @onclick="ShowAddSongForm">Add New Song</button>
+}
+
+<div class="my-3">
+    <strong>Preview:</strong>
+    @if (string.IsNullOrWhiteSpace(previewSongTitle))
+    {
+        <span><em>None</em></span>
+    }
+    else
+    {
+        <span>@previewSongTitle</span>
+    }
+    <div class="mt-2">
+        <audio controls @ref="previewAudioRef"></audio>
+    </div>
+</div>
+
+@if (TargetRadioId.HasValue && addToRadioErrorOccurred)
+{
+    <div class="alert alert-danger" role="alert">
+        <p>@(addToRadioErrorMessage ?? "There was an error adding the song to the radio.")</p>
+    </div>
+}
+
+@if (isAddSongModalOpen)
+{
+    <div class="modal-backdrop fade show"></div>
+    <div class="modal fade show d-block" tabindex="-1" role="dialog" aria-modal="true">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Add Song</h5>
+                    <button type="button" class="btn-close" @onclick="CloseAddSongForm" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Title</label>
+                        <InputText class="form-control" @bind-Value="newSong.Title" />
+                    </div>
+                    @* TODO: need to figure out duration of song server side instead *@
+                    <div class="mb-3">
+                        <label class="form-label">Audio File</label>
+                        <InputFile OnChange="LoadFiles" />
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="CloseAddSongForm">Cancel</button>
+                    <button class="btn btn-primary" @onclick="SaveNewSong" disabled="@isSaving">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@if (isAddToRadioModalOpen)
+{
+    <div class="modal-backdrop fade show"></div>
+    <div class="modal fade show d-block" tabindex="-1" role="dialog" aria-modal="true">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Add Song to Radio</h5>
+                    <button type="button" class="btn-close" @onclick="CloseAddToRadioForm" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    @if (addToRadioErrorOccurred)
+                    {
+                        <div class="alert alert-danger" role="alert">
+                            <p>@(addToRadioErrorMessage ?? "There was an error adding the song to the radio. Please make sure the song isn't already added.")</p>
+                        </div>
+                    }
+                    <div class="mb-3">
+                        <label class="form-label">Radio</label>
+                        <InputSelect class="form-select" @bind-Value="newRadioSong.RadioId">
+                            <option value="0">-- Select Radio --</option>
+                            @if (radios is not null)
+                            {
+                                @foreach (var radio in radios)
+                                {
+                                    <option value="@radio.Id">@radio.Name</option>
+                                }
+                            }
+                            else
+                            {
+                                <option disabled>Loading radios...</option>
+                            }
+                        </InputSelect>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="CloseAddToRadioForm">Cancel</button>
+                    <button class="btn btn-primary" @onclick="SaveSongToRadio" disabled="@isSaving">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@if (songs == null)
+{
+    <p><em>Loading...</em></p>
+}
+else if (songs.Count == 0)
+{
+    <p><em>No songs found.</em></p>
+}
+else
+{
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Title</th>
+                <th>Duration</th>
+                <th>Filename</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var song in songs)
+            {
+                <tr>
+                    <td>@song.Title</td>
+                    <td>@secondsToDurationDisplay(song.DurationSeconds)</td>
+                    <td>@song.Filename</td>
+                    <td>
+                        <button class="btn btn-outline-primary btn-sm me-2" @onclick="() => PreviewSong(song)">Play</button>
+                        <AuthorizeView>
+                            <Authorized>
+                                <button class="btn btn-primary btn-sm me-2" @onclick="() => HandleAddToRadioAsync(song.Id)">Add to Radio</button>
+                                @if (ShowDeleteButton)
+                                {
+                                    <button class="btn btn-danger btn-sm" @onclick="() => DeleteSong(song.Id)">Delete</button>
+                                }
+                            </Authorized>
+                            <NotAuthorized>
+                                <button class="btn btn-primary btn-sm me-2" disabled>Add to Radio</button>
+                                @if (ShowDeleteButton)
+                                {
+                                    <button class="btn btn-danger btn-sm" disabled>Delete</button>
+                                }
+                            </NotAuthorized>
+                        </AuthorizeView>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    [Parameter]
+    public int? TargetRadioId { get; set; }
+
+    [Parameter]
+    public bool ShowHeader { get; set; } = true;
+
+    [Parameter]
+    public string HeaderText { get; set; } = "Songs";
+
+    [Parameter]
+    public bool ShowAddSongButton { get; set; } = true;
+
+    [Parameter]
+    public bool ShowDeleteButton { get; set; } = true;
+
+    [Parameter]
+    public EventCallback<int> OnSongAddedToRadio { get; set; }
+
+    private List<Song>? songs;
+    private bool isAddSongModalOpen;
+    private bool isAddToRadioModalOpen;
+    private bool isSaving;
+    private Song newSong = new();
+    private ElementReference previewAudioRef;
+    private string previewSongTitle = string.Empty;
+    private List<IBrowserFile> loadedFiles = [];
+    private string uploadedFilename = string.Empty;
+    private int maxFileSize = 1024 * 1024 * 50;
+    private RadioSong newRadioSong = new();
+    private List<Radio>? radios;
+    private bool addToRadioErrorOccurred;
+    private string? addToRadioErrorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadSongs();
+    }
+
+    private async Task LoadSongs()
+    {
+        songs = await SongService.GetAllSongsAsync();
+    }
+
+    private void ShowAddSongForm()
+    {
+        newSong = new Song();
+        uploadedFilename = string.Empty;
+        addToRadioErrorOccurred = false;
+        addToRadioErrorMessage = null;
+        isAddSongModalOpen = true;
+    }
+
+    private void CloseAddSongForm()
+    {
+        isAddSongModalOpen = false;
+        if (!string.IsNullOrEmpty(uploadedFilename))
+        {
+            var path = Path.Combine(Directory.GetParent(Environment.ContentRootPath)!.FullName,
+                Environment.EnvironmentName, "unsafe_uploads",
+                uploadedFilename);
+            if (System.IO.File.Exists(path))
+            {
+                System.IO.File.Delete(path);
+                Logger.LogInformation("Deleted unused uploaded file: {Filename}", uploadedFilename);
+            }
+        }
+    }
+
+    private async Task ShowAddToRadioForm(int songId)
+    {
+        newRadioSong = new RadioSong { SongId = songId };
+        radios = await RadioService.GetAllRadiosAsync();
+        addToRadioErrorOccurred = false;
+        addToRadioErrorMessage = null;
+        isAddToRadioModalOpen = true;
+    }
+
+    private void CloseAddToRadioForm()
+    {
+        isAddToRadioModalOpen = false;
+        addToRadioErrorOccurred = false;
+        addToRadioErrorMessage = null;
+    }
+
+    private async Task HandleAddToRadioAsync(int songId)
+    {
+        addToRadioErrorOccurred = false;
+        addToRadioErrorMessage = null;
+
+        if (TargetRadioId.HasValue)
+        {
+            await AddSongToRadioAsync(TargetRadioId.Value, songId, closeModal: false);
+            return;
+        }
+
+        await ShowAddToRadioForm(songId);
+    }
+
+    private async Task LoadFiles(InputFileChangeEventArgs e)
+    {
+        isSaving = true;
+        loadedFiles.Clear();
+
+        var file = e.File;
+        try
+        {
+            var trustedFileName = Path.GetRandomFileName() + Path.GetExtension(file.Name);
+            var path = Path.Combine(Directory.GetParent(Environment.ContentRootPath)!.FullName,
+                Environment.EnvironmentName, "unsafe_uploads",
+                trustedFileName);
+
+            await using (FileStream fs = new(path, FileMode.Create))
+            {
+                await file.OpenReadStream(maxFileSize).CopyToAsync(fs);
+            }
+
+            loadedFiles.Add(file);
+            uploadedFilename = trustedFileName;
+            newSong.Filename = trustedFileName;
+
+            using (var tfile = TagLib.File.Create(path))
+            {
+                int duration = (int)tfile.Properties.Duration.TotalSeconds;
+                Logger.LogInformation("Computed duration of file {Filename}: {Duration} seconds",
+                    trustedFileName, duration);
+                newSong.DurationSeconds = (int)tfile.Properties.Duration.TotalSeconds;
+            }
+
+            Logger.LogInformation(
+                "Unsafe Filename: {UnsafeFilename} File saved: {Filename}",
+                file.Name, trustedFileName);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError("File: {Filename} Error: {Error}",
+                file.Name, ex.Message);
+        }
+
+        isSaving = false;
+    }
+
+    private async Task SaveNewSong()
+    {
+        if (string.IsNullOrWhiteSpace(newSong.Title))
+        {
+            return;
+        }
+
+        isSaving = true;
+        await SongService.AddSongAsync(newSong);
+        isSaving = false;
+        isAddSongModalOpen = false;
+        await LoadSongs();
+    }
+
+    private async Task PreviewSong(Song song)
+    {
+        if (string.IsNullOrWhiteSpace(song.Filename))
+        {
+            Logger.LogWarning("Song {SongId} has no filename for preview.", song.Id);
+            return;
+        }
+
+        previewSongTitle = song.Title;
+        var src = $"/uploads/{song.Filename}";
+        await JSRuntime.InvokeVoidAsync("radioPlayer.setAndPlay", previewAudioRef, src, 0);
+    }
+
+    private async Task DeleteSong(int id)
+    {
+        if (await JSRuntime.InvokeAsync<bool>("confirm", "Are you sure you want to delete this song?"))
+        {
+            await SongService.DeleteSongAsync(id);
+            await LoadSongs();
+        }
+    }
+
+    private string secondsToDurationDisplay(int seconds)
+    {
+        var ts = TimeSpan.FromSeconds(seconds);
+        if (ts.Hours > 0)
+        {
+            return ts.ToString(@"h\:mm\:ss");
+        }
+        else
+        {
+            return ts.ToString(@"m\:ss");
+        }
+    }
+
+    private async Task SaveSongToRadio()
+    {
+        await AddSongToRadioAsync(newRadioSong.RadioId, newRadioSong.SongId, closeModal: true);
+    }
+
+    private async Task AddSongToRadioAsync(int radioId, int songId, bool closeModal)
+    {
+        if (radioId == 0 || songId == 0)
+        {
+            return;
+        }
+
+        isSaving = true;
+        try
+        {
+            await RadioService.AddSongToRadioAsync(radioId, songId);
+            isSaving = false;
+            addToRadioErrorOccurred = false;
+            addToRadioErrorMessage = null;
+            if (closeModal)
+            {
+                isAddToRadioModalOpen = false;
+            }
+
+            if (OnSongAddedToRadio.HasDelegate)
+            {
+                await OnSongAddedToRadio.InvokeAsync(songId);
+            }
+        }
+        catch (DbUpdateException ex)
+        {
+            Logger.LogWarning("Error adding song to radio: {Error}", ex.Message);
+            isSaving = false;
+            addToRadioErrorOccurred = true;
+            addToRadioErrorMessage = "There was an error adding the song to the radio. Please make sure the song isn't already added.";
+        }
+        catch (InvalidOperationException ex)
+        {
+            Logger.LogWarning(ex.Message);
+            isSaving = false;
+            addToRadioErrorOccurred = true;
+            addToRadioErrorMessage = ex.Message;
+        }
+    }
+}
